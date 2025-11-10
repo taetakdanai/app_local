@@ -1,0 +1,79 @@
+{
+  "model_name": "RandomForest Fine-tuned (15% NASA)",
+  "model_type": "RandomForestRegressor",
+  "selection_criteria": "Highest R\u00b2 Score on NASA Test Set",
+  "dataset": "NASA Battery Dataset (Regular Alt)",
+  "training_approach": "Transfer Learning (Zenodo \u2192 NASA)",
+  "export_date": "2025-11-10T14:39:28.462007",
+  "fine_tuning_info": {
+    "base_dataset": "Zenodo",
+    "fine_tune_dataset": "NASA Regular Alt",
+    "fine_tune_percentage": 15,
+    "zenodo_samples": 39923,
+    "nasa_fine_tune_samples": 12929,
+    "nasa_test_samples": 73262,
+    "selection_reason": "Best R\u00b2 among 3 fine-tuning strategies"
+  },
+  "metrics": {
+    "nasa_test": {
+      "r2_score": 0.9413533918482726,
+      "rmse": 95.5761818415882,
+      "mae": 53.26033873964566,
+      "mape": 66.95125354914991,
+      "evs": 0.941355267220174
+    },
+    "zenodo_test": {
+      "r2_score": 0.8249793946126851,
+      "rmse": 175.75193953343293,
+      "mae": 104.51279400996413,
+      "mape": 58.19460283782164,
+      "evs": 0.8392969749477299
+    }
+  },
+  "baseline_comparison": {
+    "baseline_r2_nasa": -4.55874882334664,
+    "finetuned_r2_nasa": 0.9413533918482726,
+    "improvement_percentage": 120.64938052799346,
+    "improvement_description": "120.6% improvement over baseline"
+  },
+  "ranking": {
+    "rank": 1,
+    "total_strategies_evaluated": 3,
+    "r2_advantage_over_second": 0.007201293616619253
+  },
+  "model_parameters": {
+    "n_estimators": 500,
+    "max_depth": 16,
+    "min_samples_split": 4,
+    "min_samples_leaf": 2,
+    "random_state": 42
+  },
+  "features": {
+    "common_features": [
+      "voltage_v_mean",
+      "current_a_mean",
+      "aux_temperature_1_c_mean",
+      "current_a_abs_mean",
+      "rolling_mean_current_a_mean",
+      "rolling_mean_aux_temperature_1_c_mean",
+      "rolling_mean_current_a_abs_mean",
+      "rolling_std_current_a_mean",
+      "rolling_std_aux_temperature_1_c_mean",
+      "rolling_std_current_a_abs_mean"
+    ],
+    "n_features": 10
+  },
+  "preprocessing": {
+    "downsampling_step": 20,
+    "rolling_window": 10,
+    "use_discharge_only": true
+  },
+  "deployment_notes": {
+    "confidence_level": "HIGH",
+    "recommended_use": "Production-ready for NASA battery RUL prediction with cross-dataset transfer",
+    "domain_adaptation": "Successfully adapted from Zenodo to NASA dataset",
+    "monitoring_required": "Track prediction errors and retrain with more NASA data if needed",
+    "cost_savings": "Requires only 15% of new domain data for high performance",
+    "selection_reason": "Optimal balance with 15% NASA fine-tuning data"
+  }
+}

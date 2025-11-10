@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  battery-rul-app:
+    build: .
+    container_name: battery-rul-app
+    ports:
+      - "8050:8050"
+    volumes:
+      - .:/app  # Maps local directory to container for easier file changes
+    restart: always
