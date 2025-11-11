@@ -1,8 +1,8 @@
 import base64
 import io
-import joblib
 import pandas as pd
 import numpy as np
+import plotly.express as px
 from dash import Dash, dcc, html, Input, Output, State
 from dash.dash_table import DataTable
 import dash_bootstrap_components as dbc
@@ -14,12 +14,16 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 # Initialize the predictor (using 'zenodo' model)
 predictor = BatteryRULPredictor(model_type='zenodo')
 
-# Define the layout of the app
+# Define layout
 app.layout = dbc.Container(
     [
-        html.H2("Battery Remaining Useful Life (RUL) Predictor", className="text-center mt-4 mb-3"),
-        html.P("Upload a CSV in the same format as your raw experiment data or engineered cycle data.", className="text-center text-muted mb-4"),
-        
+        html.H2("Battery Remaining Useful Life (RUL) Predictor",
+                className="text-center mt-4 mb-3"),
+        html.P(
+            "Upload a CSV file. The app will use ONLY the last row and simulate RUL predictions for protocol IDs 1–16.",
+            className="text-center text-muted mb-4"
+        ),
+
         # Upload button
         dcc.Upload(
             id="upload-data",
@@ -40,60 +44,68 @@ app.layout = dbc.Container(
         ),
 
         # Status message
-        html.Div(
-            id="status-msg",
-            children="Upload a CSV file containing battery cycle data to begin.",
-            className="text-center text-muted mb-4",
-        ),
-        
-        # Protocol Dropdown (affects only RUL prediction for selected protocol)
+        html.Div(id="status-msg", className="text-center text-muted mb-4"),
+
+        # Dropdown for selected protocol
         html.Div(
             [
                 html.Label("Select Protocol ID for RUL Prediction:"),
                 dcc.Dropdown(
                     id="protocol-dropdown",
                     options=[{"label": f"Protocol {i}", "value": i} for i in range(1, 17)],
-                    value=1,  # Default protocol
+                    value=1,
                     style={"width": "50%", "margin": "auto"},
                 ),
             ],
             className="mb-4 text-center",
         ),
-        
-        # RUL Prediction output card
+
+        # Prediction card
         dbc.Card(
             dbc.CardBody(
                 [
-                    html.H3("RUL Prediction for Selected Protocol:", className="card-title text-center"),
-                    html.Div(
-                        id="prediction-output",
-                        children="--",
-                        className="text-center text-primary",
-                        style={"fontSize": "32px", "fontWeight": "bold"},
-                    ),
+                    html.H3("RUL Prediction for Selected Protocol:",
+                            className="card-title text-center"),
+                    html.Div(id="prediction-output",
+                             children="--",
+                             className="text-center text-primary",
+                             style={"fontSize": "32px", "fontWeight": "bold"}),
                 ]
             ),
             className="mb-4 shadow-sm",
         ),
-        
-        # Table for predicted RUL values for all protocols
+
+        # Table of predictions
         html.Div(
-            id="protocol-rul-table",
-            children=[
-                html.H4("Predicted RUL for All Protocols:", className="text-center"),
-                DataTable(id='rul-table', style_table={'height': '300px', 'overflowY': 'auto'})
+            [
+                html.H4("Predicted RUL for All Protocols (Simulated from Last Row):",
+                        className="text-center"),
+                DataTable(
+                    id='rul-table',
+                    columns=[
+                        {"name": "Protocol ID", "id": "protocol_id"},
+                        {"name": "Predicted RUL (Cycles)", "id": "Predicted RUL (Cycles)"},
+                    ],
+                    data=[],
+                    style_table={'height': '300px', 'overflowY': 'auto'},
+                    style_cell={'textAlign': 'center'},
+                ),
             ],
             className="mb-4",
         ),
+
+        # Bar chart visualization
+        dcc.Graph(id="protocol-rul-bar", style={"height": "450px"}),
     ],
     fluid=True,
 )
 
-# Define the callback to process data and provide predictions
+# Callback
 @app.callback(
     Output("prediction-output", "children"),
     Output("status-msg", "children"),
     Output("rul-table", "data"),
+    Output("protocol-rul-bar", "figure"),
     Input("upload-data", "contents"),
     Input("protocol-dropdown", "value"),
     State("upload-data", "filename"),
@@ -104,68 +116,87 @@ def update_output(contents, selected_protocol, filename):
             "--",
             "Upload a CSV file containing battery cycle data to begin.",
             [],
+            {},
         )
 
     try:
-        # Decode uploaded content
+        # Decode uploaded CSV
         content_type, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string)
-
-        # Try UTF-8, then fall back to other encoding
         try:
             s = decoded.decode("utf-8")
         except UnicodeDecodeError:
             s = decoded.decode("ISO-8859-1")
 
         df_raw = pd.read_csv(io.StringIO(s))
+        if df_raw.empty:
+            return "--", "Uploaded file is empty or unreadable.", [], {}
 
-        if df_raw is None or df_raw.empty:
-            return "--", "Uploaded file is empty or unreadable.", []
+        # Use only the last row
+        last_row = df_raw.iloc[[-1]]
 
-        # Get the last row of the dataset
-        last_row = df_raw.iloc[[-1]]  # Select only the last row
-        
-        # List to store predicted RUL for each protocol
         protocol_rul_list = []
 
-        # Simulate RUL predictions for all protocols (1-16)
+        # Simulate RUL for all protocols
         for protocol in range(1, 17):
-            # Create a copy of the last row with the current protocol_id
-            df_protocol = last_row.copy()
-            df_protocol["protocol_id"] = protocol  # Change protocol_id for simulation
-            
-            # Make predictions using the loaded model (for each protocol)
-            predictions = predictor.predict(df_protocol)  # Use the preprocessor from the predictor
-            
-            # Calculate the mean RUL for this protocol (since we have one row, it is just the prediction)
-            mean_rul = predictions[0]
-            protocol_rul_list.append({"protocol_id": protocol, "Predicted RUL (Cycles)": mean_rul})
+            row_copy = last_row.copy()
+            row_copy["protocol_id"] = protocol
+            preds = predictor.predict(row_copy)
+            rul_value = float(preds[0])
+            protocol_rul_list.append({
+                "protocol_id": protocol,
+                "Protocol Label": f"Protocol {protocol}",
+                "Predicted RUL (Cycles)": rul_value
+            })
 
-        # Convert the list of protocol RUL results to a DataFrame for the table
         protocol_rul_df = pd.DataFrame(protocol_rul_list)
 
-        # For the selected protocol, we predict based on the last row with the selected protocol_id.
-        # This is used for the output card, not the table.
-        df_raw["protocol_id"] = selected_protocol  # Modify for selected protocol
-        predictions = predictor.predict(df_raw.iloc[[-1]])  # Predict only for the last row
-
-        # Display predicted RUL for the selected protocol
-        prediction = predictions[0]  # Assuming we take the first prediction for demo
+        # Find selected protocol RUL
+        selected_rul = protocol_rul_df.loc[
+            protocol_rul_df["protocol_id"] == selected_protocol,
+            "Predicted RUL (Cycles)"
+        ].values[0]
+        prediction_text = f"{selected_rul:.2f} cycles"
 
         status = (
             f"Successfully analyzed file: {filename}. "
-            f"Predicted RUL for the selected Protocol {selected_protocol} is {prediction:.2f} cycles."
+            f"Simulated using the last row for protocols 1–16."
         )
 
-        # Return the table data, prediction output, and status message
-        return f"{prediction:.2f} cycles", status, protocol_rul_df.to_dict('records')
+        # Bar chart with distinct colors and labels
+        bar_fig = px.bar(
+            protocol_rul_df,
+            x="Protocol Label",
+            y="Predicted RUL (Cycles)",
+            color="Protocol Label",  # unique color for each bar
+            text="Predicted RUL (Cycles)",
+            title="Predicted RUL by Protocol ID (Using Last Row Simulation)",
+        )
+
+        bar_fig.update_traces(
+            texttemplate="%{text:.2f}",
+            textposition="outside",
+            hovertemplate="Protocol %{x}<br>RUL: %{y:.2f} cycles<extra></extra>"
+        )
+        bar_fig.update_layout(
+            xaxis_title="Protocol",
+            yaxis_title="Predicted RUL (Cycles)",
+            uniformtext_minsize=8,
+            uniformtext_mode='hide',
+            showlegend=False,
+            plot_bgcolor="rgba(0,0,0,0)",
+            hovermode="x unified",
+        )
+
+        return prediction_text, status, protocol_rul_df.to_dict("records"), bar_fig
 
     except Exception as e:
-        print(f"An error occurred during prediction: {e}")
+        print(f"Error: {e}")
         return (
             "--",
-            f"Error processing file: {filename}. Please check file format and required columns. Details: {e}",
+            f"Error processing file: {filename}. Details: {e}",
             [],
+            {},
         )
 
 
